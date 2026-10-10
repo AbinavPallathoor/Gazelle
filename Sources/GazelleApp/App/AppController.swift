@@ -5,7 +5,8 @@ import GazeKit
 /// A user-visible outcome of a hotkey or menu action.
 enum ActivationFeedback: Equatable {
     case activated
-    case deactivated
+    /// With a reason when Gazelle left Active by itself (Esc, typing into a field).
+    case deactivated(String?)
     case refused(ActivationBlocker)
     case killed
     case rearmed
@@ -53,9 +54,17 @@ final class AppController: ObservableObject {
             NSSound.beep()
             onFeedback?(.refused(refusal))
         } else {
-            onFeedback?(activation.isActive ? .activated : .deactivated)
+            onFeedback?(activation.isActive ? .activated : .deactivated(nil))
         }
         apply()
+    }
+
+    /// Leaves Active (Esc, or a text field took the keyboard).
+    func deactivate(reason: String) {
+        guard activation.isActive else { return }
+        activation.deactivate()
+        apply()
+        onFeedback?(.deactivated(reason))
     }
 
     /// Kill switch: force Inactive and disable all interception, regardless of state.

@@ -13,6 +13,9 @@ struct ScanStats: Equatable {
     var appName = ""
 }
 
+/// Live Accessibility handles for the elements of one scan, keyed by `Element.id`.
+typealias ElementRefs = [UInt64: AXUIElement]
+
 /// Reads the element map from the Accessibility API. Runs on a background queue; every call
 /// has a short messaging timeout so a busy target app cannot freeze it for long.
 final class ElementScanner {
@@ -26,10 +29,11 @@ final class ElementScanner {
     }
 
     /// Scans the frontmost app's windows, open menus and menu bar, and drops occluded elements.
-    func scanFrontmost(app: NSRunningApplication?, screens: [Rect2]) -> ([Element], ScanStats) {
+    func scanFrontmost(app: NSRunningApplication?, screens: [Rect2]) -> ([Element], ElementRefs, ScanStats) {
         let start = DispatchTime.now().uptimeNanoseconds
         var stats = ScanStats()
         var elements: [Element] = []
+        var refs: ElementRefs = [:]
         let clip = Self.bounds(of: screens)
 
         if let app, app.processIdentifier != ownPID {
@@ -43,7 +47,7 @@ final class ElementScanner {
                 let role = child.snapshot()?.role
                 roots.append((child, role == "AXMenuBar" ? .menuBar : .window))
             }
-            let res = TreeWalker.walk(roots: roots, pid: pid, clip: clip)
+            let res = TreeWalker.walk(roots: roots, pid: pid, clip: clip) { refs[$0.id] = $1.element }
             elements = res.elements
             stats.visitedNodes = res.visitedNodes
             stats.truncated = res.truncated
@@ -52,15 +56,16 @@ final class ElementScanner {
         let visible = Occlusion.visibleElements(elements, windows: Self.windowList(), screens: screens, ignoringPID: ownPID)
         stats.elements = visible.count
         stats.durationMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
-        return (visible, stats)
+        return (visible, refs, stats)
     }
 
     /// Menu extras (status items of every app) and the Dock. Slow (one round trip per running
     /// app) but rarely changing, so the store runs it separately from frontmost-app scans.
-    func scanSystem(screens: [Rect2]) -> [Element] {
+    func scanSystem(screens: [Rect2]) -> ([Element], ElementRefs) {
         let clip = Self.bounds(of: screens)
-        let all = scanMenuExtras(clip: clip) + scanDock(clip: clip)
-        return Occlusion.visibleElements(all, windows: [], screens: screens, ignoringPID: ownPID)
+        var refs: ElementRefs = [:]
+        let all = scanMenuExtras(clip: clip, refs: &refs) + scanDock(clip: clip, refs: &refs)
+        return (Occlusion.visibleElements(all, windows: [], screens: screens, ignoringPID: ownPID), refs)
     }
 
     private static func bounds(of screens: [Rect2]) -> Rect2 {
@@ -77,21 +82,23 @@ final class ElementScanner {
         if result != .cannotComplete { manualAccessibilityEnabled.insert(pid) }
     }
 
-    private func scanMenuExtras(clip: Rect2) -> [Element] {
+    private func scanMenuExtras(clip: Rect2, refs: inout ElementRefs) -> [Element] {
         var out: [Element] = []
         for app in NSWorkspace.shared.runningApplications where app.processIdentifier != ownPID {
             let node = AXNode(element: AXUIElementCreateApplication(app.processIdentifier))
             guard let extras = node.element("AXExtrasMenuBar") else { continue }
-            out += TreeWalker.walk(roots: [(extras, .menuExtras)], pid: app.processIdentifier, clip: clip).elements
+            out += TreeWalker.walk(roots: [(extras, .menuExtras)], pid: app.processIdentifier, clip: clip) {
+                refs[$0.id] = $1.element
+            }.elements
         }
         return out
     }
 
-    private func scanDock(clip: Rect2) -> [Element] {
+    private func scanDock(clip: Rect2, refs: inout ElementRefs) -> [Element] {
         guard let dock = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else { return [] }
         let node = AXNode(element: AXUIElementCreateApplication(dock.processIdentifier))
         let roots = node.children(visibleOnly: false).map { (node: $0, source: ElementSource.dock) }
-        return TreeWalker.walk(roots: roots, pid: dock.processIdentifier, clip: clip).elements
+        return TreeWalker.walk(roots: roots, pid: dock.processIdentifier, clip: clip) { refs[$0.id] = $1.element }.elements
     }
 
     /// On-screen windows front to back. Bounds are readable without Screen Recording permission.

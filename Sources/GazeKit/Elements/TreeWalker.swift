@@ -63,14 +63,23 @@ public struct WalkResult: Sendable {
 /// - Closed menus (under menu bar items that are not selected) are not walked.
 /// - Breadth-first, so a node cap spends its budget evenly instead of inside one deep subtree.
 public enum TreeWalker {
+    struct ParentInfo {
+        var isNativeList: Bool
+    }
+
     static let visibleOnlyRoles: Set<String> = ["AXTable", "AXOutline", "AXList", "AXGrid", "AXBrowser"]
     static let clippingRoles: Set<String> = ["AXWindow", "AXScrollArea", "AXSheet", "AXDrawer"]
 
+    /// - Parameter onElement: called with each emitted element and its node, so callers can keep
+    ///   a handle for performing actions later.
     public static func walk<N: ElementNode>(roots: [(node: N, source: ElementSource)], pid: Int32,
-                                             clip: Rect2, limits: WalkLimits = WalkLimits()) -> WalkResult {
+                                             clip: Rect2, limits: WalkLimits = WalkLimits(),
+                                             onElement: (Element, N) -> Void = { _, _ in }) -> WalkResult {
         var result = WalkResult()
-        var queue: [(node: N, source: ElementSource, clip: Rect2, depth: Int)] =
-            roots.map { ($0.node, $0.source, clip, 0) }
+        // `inRow`: inside a table/outline row or a cell, where text fields are item labels
+        // (e.g. Finder file names) and the row itself is the thing to act on.
+        var queue: [(node: N, source: ElementSource, clip: Rect2, depth: Int, inRow: Bool, parent: ParentInfo?)] =
+            roots.map { ($0.node, $0.source, clip, 0, false, nil) }
         var head = 0
         var seen = Set<UInt64>()
 
@@ -79,7 +88,7 @@ public enum TreeWalker {
                 result.truncated = true
                 break
             }
-            let (node, source, parentClip, depth) = queue[head]
+            let (node, source, parentClip, depth, inRow, parentListRole) = queue[head]
             head += 1
             result.visitedNodes += 1
             guard let snap = node.snapshot(), !snap.isHidden else { continue }
@@ -92,12 +101,23 @@ public enum TreeWalker {
             }
 
             var descend = depth < limits.maxDepth && !ElementClassifier.opaqueRoles.contains(snap.role)
-            if let kind = ElementClassifier.kind(role: snap.role, subrole: snap.subrole, source: source,
-                                                 actions: node.actions) {
-                if let frame = snap.frame, let visible = frame.intersection(parentClip),
+            var childInRow = inRow
+            var kind = ElementClassifier.kind(role: snap.role, subrole: snap.subrole, source: source, actions: node.actions)
+            // Items of a native list (e.g. Finder's column view) are groups with no role of their
+            // own. Web lists (subrole AXContentList) are skipped: their links are the targets.
+            if kind == nil, snap.role == "AXGroup", let parent = parentListRole, parent.isNativeList {
+                kind = .cell
+            }
+            if let kind {
+                if kind == .row || kind == .cell { childInRow = true }
+                if kind == .textField && inRow {
+                    descend = false
+                } else if let frame = snap.frame, let visible = frame.intersection(parentClip),
                    visible.width >= limits.minSide, visible.height >= limits.minSide {
-                    result.elements.append(Element(id: snap.identity, kind: kind, frame: visible,
-                                                   title: snap.title, pid: pid, source: source))
+                    let element = Element(id: snap.identity, kind: kind, frame: visible,
+                                          title: snap.title, pid: pid, source: source)
+                    result.elements.append(element)
+                    onElement(element, node)
                 }
                 if ElementClassifier.isLeaf(kind) { descend = false }
             }
@@ -105,7 +125,8 @@ public enum TreeWalker {
 
             guard descend else { continue }
             let kids = node.children(visibleOnly: visibleOnlyRoles.contains(snap.role))
-            for k in kids { queue.append((k, source, clip, depth + 1)) }
+            let info = ParentInfo(isNativeList: snap.role == "AXList" && snap.subrole != "AXContentList")
+            for k in kids { queue.append((k, source, clip, depth + 1, childInRow, info)) }
         }
         return result
     }

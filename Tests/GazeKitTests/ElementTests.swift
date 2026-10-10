@@ -91,6 +91,27 @@ let screen = r(0, 0, 1000, 800)
         #expect(inlineBox.snapshotCalls == 0)
     }
 
+    @Test func textFieldsInsideRowsAreLabelsNotTargets() {
+        let row = FakeNode("AXRow", r(0, 0, 400, 20), kids: [
+            FakeNode("AXCell", r(0, 0, 400, 20), kids: [FakeNode("AXTextField", r(20, 0, 100, 20))]),
+        ])
+        let form = FakeNode("AXTextField", r(0, 100, 200, 24))
+        let res = walk(FakeNode("AXWindow", r(0, 0, 500, 500), kids: [row, form]))
+        #expect(res.elements.map(\.kind) == [.row, .textField])
+        #expect(res.elements.last?.frame.y == 100)
+    }
+
+    @Test func nativeListGroupsAreItemsButWebListGroupsAreNot() {
+        let finderList = FakeNode("AXList", r(0, 0, 300, 100), kids: [
+            FakeNode("AXGroup", r(10, 0, 200, 27), kids: [FakeNode("AXTextField", r(30, 3, 60, 21))]),
+        ])
+        let webList = FakeNode("AXList", r(0, 200, 300, 100), subrole: "AXContentList", kids: [
+            FakeNode("AXGroup", r(10, 200, 200, 30), kids: [FakeNode("AXLink", r(10, 200, 200, 30))]),
+        ])
+        let res = walk(FakeNode("AXWindow", r(0, 0, 500, 500), kids: [finderList, webList]))
+        #expect(res.elements.map(\.kind) == [.cell, .link])
+    }
+
     @Test func walksOpenMenusOnly() {
         let closed = FakeNode("AXMenuBarItem", r(10, 0, 40, 24), kids: [
             FakeNode("AXMenu", r(10, 24, 200, 300), kids: [FakeNode("AXMenuItem", r(10, 30, 200, 20))]),

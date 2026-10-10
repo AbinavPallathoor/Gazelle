@@ -37,3 +37,15 @@ Toggle the debug overlay with ⌃⌥B (or menu → Show Element Boxes). The blac
 - [x] No UI freezes in the target app while boxes are on: user tried it and reported it working. (2026-10-11)
 - [ ] Dock items are outlined (the dev Mac auto-hides the Dock: show it and check).
 - [ ] Multiple displays: boxes line up on a second display, including one above or left of the primary.
+
+## M3 — Keyboard-only navigation and actions
+With Gazelle Active (⌃⌥G):
+- [x] Finder: the outline starts at the focused element or the one nearest the pointer; ↑/↓ walk the list items; ←/→ stay in the row or beep; Return presses toolbar buttons. (2026-10-11)
+- [x] Safari: Tab cycles toolbar → page; ↓ moves into page content (TOC button, Article link) after the page loads. (2026-10-11)
+- [x] ⇧Return on Safari's reload button opens its context menu (via AXShowMenu). (2026-10-11)
+- [x] Return on a text field (Safari address field) focuses it and leaves Active with a HUD message, so typing works. (2026-10-11)
+- [x] ⌃⌥K while Active removes the keyboard tap and trips the kill switch. (2026-10-11)
+- [x] Esc leaves Active; afterwards arrows, Tab and Return reach apps normally (tap removed). (2026-10-11)
+- [ ] Outline is visible over a full-screen app and follows across Spaces.
+- [ ] ⌥Return double-clicks (e.g. opens a file in Finder's list view) and ⌘Return focuses without clicking.
+- [ ] Use the Mac keyboard-only for a few minutes: menu bar menus (↑ from the window into the menu bar, Return opens a menu, arrows inside it), Dock items, a System Settings pane.

@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hud = FeedbackHUD()
     private let elementStore = ElementStore()
     private let elementBoxes = ElementBoxesOverlay()
+    private let keyboardTap = KeyboardTap()
+    private lazy var navigation = NavigationController(store: elementStore)
     private var cancellables: Set<AnyCancellable> = []
 
     static func main() {
@@ -26,7 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let permissions = PermissionsModel(checker: SystemPermissions())
         let hotkeys = CarbonHotkeys()
-        controller = AppController(hotkeys: hotkeys, permissions: permissions, interceptor: NoInputInterceptor())
+        controller = AppController(hotkeys: hotkeys, permissions: permissions, interceptor: keyboardTap)
+        keyboardTap.onCommand = { [weak self] in self?.navigation.handle($0) }
+        keyboardTap.onKill = { [weak self] in self?.controller.kill() }
+        navigation.onExitRequested = { [weak self] reason in self?.controller.deactivate(reason: reason) }
         onboarding = OnboardingWindowController(model: permissions)
         statusItem = StatusItemController(
             controller: controller,
@@ -37,6 +42,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.start()
         _ = hotkeys.register(.toggleElementBoxes) { [weak self] in self?.toggleElementBoxes() }
 
+        controller.$activation
+            .map(\.isActive)
+            .removeDuplicates()
+            .sink { [weak self] active in
+                guard let self else { return }
+                self.navigation.setActive(active)
+                // @Published emits before the property changes, so pass the new value along.
+                self.updateStoreRunning(active: active)
+            }
+            .store(in: &cancellables)
+
         elementStore.$elements.combineLatest(elementStore.$stats, elementStore.$lacksPermission)
             .sink { [weak self] elements, stats, lacks in
                 self?.elementBoxes.update(elements: elements, stats: stats, lacksPermission: lacks)
@@ -46,16 +62,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !permissions.allRequiredGranted { onboarding.show() }
     }
 
-    /// The element store runs only while something needs it (the overlay now; selection from M3).
     private func toggleElementBoxes() {
         if elementBoxes.isVisible {
             elementBoxes.hide()
-            elementStore.stop()
             hud.show(symbol: "square.dashed", text: "Element boxes off", tint: .secondaryLabelColor)
         } else {
             elementBoxes.show()
-            elementStore.start()
             hud.show(symbol: "square.dashed.inset.filled", text: "Element boxes on", tint: .controlAccentColor)
+        }
+        updateStoreRunning(active: controller.activation.isActive)
+    }
+
+    /// The element store runs only while something needs it: Active navigation or the debug boxes.
+    private func updateStoreRunning(active: Bool) {
+        if active || elementBoxes.isVisible {
+            elementStore.start()
+        } else {
+            elementStore.stop()
         }
     }
 
@@ -63,8 +86,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch feedback {
         case .activated:
             hud.show(symbol: "eye.fill", text: "Gazelle Active", tint: .controlAccentColor)
-        case .deactivated:
-            hud.show(symbol: "eye", text: "Gazelle Inactive", tint: .secondaryLabelColor)
+        case .deactivated(let reason):
+            hud.show(symbol: "eye", text: reason.map { "Gazelle Inactive: \($0)" } ?? "Gazelle Inactive", tint: .secondaryLabelColor)
         case .killed:
             hud.show(symbol: "eye.slash", text: "Kill switch: Gazelle stopped", tint: .systemRed)
         case .rearmed:

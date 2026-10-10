@@ -102,7 +102,18 @@ final class AppControllerTests: XCTestCase {
         hk.press(.killSwitch)
         hk.press(.toggleActive)
         c.rearm()
-        XCTAssertEqual(seen, [.activated, .deactivated, .killed, .refused(.killed), .rearmed])
+        XCTAssertEqual(seen, [.activated, .deactivated(nil), .killed, .refused(.killed), .rearmed])
+    }
+
+    func testDeactivateWithReasonDisablesInterception() {
+        let (c, hk, ic) = make()
+        var seen: [ActivationFeedback] = []
+        c.onFeedback = { seen.append($0) }
+        hk.press(.toggleActive)
+        c.deactivate(reason: "Esc")
+        c.deactivate(reason: "again")    // no-op while inactive
+        XCTAssertFalse(ic.isEnabled)
+        XCTAssertEqual(seen, [.activated, .deactivated("Esc")])
     }
 
     func testPermissionsModelReportsRequiredGrants() {

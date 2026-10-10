@@ -21,6 +21,10 @@ final class ElementStore: ObservableObject {
     @Published private(set) var elements: [Element] = []
     @Published private(set) var stats = ScanStats()
     @Published private(set) var lacksPermission = false
+    /// Accessibility handles for `elements`, for performing actions.
+    private(set) var refs: ElementRefs = [:]
+    private var frontmostRefs: ElementRefs = [:]
+    private var systemRefs: ElementRefs = [:]
     private(set) var isRunning = false
 
     private let scanner = ElementScanner()
@@ -56,6 +60,8 @@ final class ElementStore: ObservableObject {
         kAXCreatedNotification, kAXMenuOpenedNotification, kAXMenuClosedNotification,
         kAXSelectedChildrenChangedNotification, kAXSelectedRowsChangedNotification,
         kAXRowCountChangedNotification, kAXLayoutChangedNotification, kAXTitleChangedNotification,
+        // Web views (Safari, Chromium, Electron) finish loading after the first scan.
+        "AXLoadComplete", "AXElementBusyChanged",
     ]
 
     func start() {
@@ -103,12 +109,18 @@ final class ElementStore: ObservableObject {
         pendingSince = nil
         frontmostElements = []
         systemElements = []
+        frontmostRefs = [:]
+        systemRefs = [:]
+        refs = [:]
         elements = []
     }
 
     /// Records a change and schedules a rescan a fixed delay after the *first* unserved change.
     /// Later changes in that window join the same scan instead of pushing it back, so a burst of
     /// notifications (e.g. while a window is dragged) cannot starve the refresh.
+    /// Requests a prompt rescan (e.g. right after performing an action).
+    func refreshSoon() { noteChange(delay: 0.05) }
+
     func noteChange(system: Bool = false, delay: Double = ElementStore.debounceSeconds) {
         guard isRunning else { return }
         if system { refreshSystem() }
@@ -130,13 +142,15 @@ final class ElementStore: ObservableObject {
         let screens = ElementScanner.screenRects()
         let scanner = scanner
         systemQueue.async { [weak self] in
-            let found = scanner.scanSystem(screens: screens)
+            let (found, foundRefs) = scanner.scanSystem(screens: screens)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.systemScanInFlight = false
                     guard self.isRunning else { return }
                     self.systemElements = found
+                    self.systemRefs = foundRefs
+                    self.refs = self.frontmostRefs.merging(foundRefs) { a, _ in a }
                     self.elements = self.frontmostElements + found
                 }
             }
@@ -158,7 +172,7 @@ final class ElementStore: ObservableObject {
         lacksPermission = !AXIsProcessTrusted()
 
         queue.async { [weak self] in
-            var (elements, stats) = scanner.scanFrontmost(app: app, screens: screens)
+            var (elements, elementRefs, stats) = scanner.scanFrontmost(app: app, screens: screens)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
                     guard let self else { return }
@@ -168,6 +182,8 @@ final class ElementStore: ObservableObject {
                     self.scanInFlight = false
                     guard self.isRunning else { return }
                     self.frontmostElements = elements
+                    self.frontmostRefs = elementRefs
+                    self.refs = elementRefs.merging(self.systemRefs) { a, _ in a }
                     self.elements = elements + self.systemElements
                     self.stats = stats
                     self.retryIfNotReady(app: app, stats: stats)
