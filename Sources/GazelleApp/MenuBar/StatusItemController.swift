@@ -8,11 +8,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let controller: AppController
     private let showPermissions: () -> Void
+    private let elementBoxesVisible: () -> Bool
+    private let toggleElementBoxes: () -> Void
     private var cancellables: Set<AnyCancellable> = []
 
-    init(controller: AppController, showPermissions: @escaping () -> Void) {
+    init(controller: AppController, showPermissions: @escaping () -> Void,
+         elementBoxesVisible: @escaping () -> Bool, toggleElementBoxes: @escaping () -> Void) {
         self.controller = controller
         self.showPermissions = showPermissions
+        self.elementBoxesVisible = elementBoxesVisible
+        self.toggleElementBoxes = toggleElementBoxes
         super.init()
         let menu = NSMenu()
         menu.delegate = self
@@ -65,6 +70,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         menu.addItem(.separator())
+        let boxes = NSMenuItem(title: "Show Element Boxes (\(Hotkey.toggleElementBoxes.display))",
+                               action: #selector(toggleBoxes), keyEquivalent: "")
+        boxes.target = self
+        boxes.state = elementBoxesVisible() ? .on : .off
+        menu.addItem(boxes)
+
+        menu.addItem(.separator())
         let perms = NSMenuItem(
             title: controller.permissions.allRequiredGranted ? "Permissions…" : "Permissions… (action needed)",
             action: #selector(openPermissions), keyEquivalent: ",")
@@ -82,4 +94,5 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func toggleActive() { controller.toggleActive() }
     @objc private func rearm() { controller.rearm() }
     @objc private func openPermissions() { showPermissions() }
+    @objc private func toggleBoxes() { toggleElementBoxes() }
 }

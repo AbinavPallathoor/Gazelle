@@ -22,3 +22,18 @@ Tick each one on the development Mac at the end of its milestone.
 - [x] From another app (e.g. Safari focused), ⌃⌥G toggles Active: the icon changes between eye and filled eye, and a "Gazelle Active/Inactive" message shows briefly. (2026-10-11)
 - [x] From another app, ⌃⌥K trips the kill switch: the icon shows a slashed eye, ⌃⌥G beeps and stays inactive, and the menu's "Re-arm Kill Switch" restores it. (2026-10-11)
 - [x] Another process holding ⌃⌥K: tested 2026-10-11. Both registrations succeed (Carbon allows cross-process duplicates), so Gazelle cannot detect the conflict. The refusal path is covered by `testRefusesToActivateWhenKillSwitchCannotRegister`. The event-tap fallback is an M3 requirement (ADR 0003).
+
+## M2 — Element map
+Toggle the debug overlay with ⌃⌥B (or menu → Show Element Boxes). The black stats line at the bottom left shows the elements, nodes, scan time and change→boxes latency.
+- [x] Finder: sidebar rows, toolbar buttons, file icons and window buttons are outlined and line up. (2026-10-11)
+- [x] Safari (Wikipedia page): links, toolbar, address field and tabs line up; change→boxes 65 ms. (2026-10-11)
+- [x] System Settings: sidebar rows, search field and content rows line up; rows partly under another app's window are trimmed. (2026-10-11)
+- [x] Terminal: window and toolbar controls outlined. (2026-10-11)
+- [x] Electron (Discord): server and DM sidebar, buttons and user panel outlined; change→boxes 55 ms. (2026-10-11)
+- [x] Chromium (Helium browser): tabs, toolbar, address field and page links, including the docs navigation list; change→boxes 157 ms. (2026-10-11)
+- [x] VS Code (Electron) and Google Chrome: not installed; accepted with Discord (Electron) and Helium (Chromium) as substitutes. (2026-10-11)
+- [x] Menu bar menus and status items are outlined; elements behind other apps' windows are dropped. (2026-10-11)
+- [x] Refresh latency after moving a window is under ~200 ms (Finder: 38–43 ms). (2026-10-11)
+- [x] No UI freezes in the target app while boxes are on: user tried it and reported it working. (2026-10-11)
+- [ ] Dock items are outlined (the dev Mac auto-hides the Dock: show it and check).
+- [ ] Multiple displays: boxes line up on a second display, including one above or left of the primary.

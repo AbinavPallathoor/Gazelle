@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 @main
 @MainActor
@@ -7,6 +8,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController!
     private var onboarding: OnboardingWindowController!
     private let hud = FeedbackHUD()
+    private let elementStore = ElementStore()
+    private let elementBoxes = ElementBoxesOverlay()
+    private var cancellables: Set<AnyCancellable> = []
 
     static func main() {
         let app = NSApplication.shared
@@ -21,13 +25,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if NSClassFromString("XCTestCase") != nil { return }
 
         let permissions = PermissionsModel(checker: SystemPermissions())
-        controller = AppController(hotkeys: CarbonHotkeys(), permissions: permissions, interceptor: NoInputInterceptor())
+        let hotkeys = CarbonHotkeys()
+        controller = AppController(hotkeys: hotkeys, permissions: permissions, interceptor: NoInputInterceptor())
         onboarding = OnboardingWindowController(model: permissions)
-        statusItem = StatusItemController(controller: controller) { [weak self] in self?.onboarding.show() }
+        statusItem = StatusItemController(
+            controller: controller,
+            showPermissions: { [weak self] in self?.onboarding.show() },
+            elementBoxesVisible: { [weak self] in self?.elementBoxes.isVisible ?? false },
+            toggleElementBoxes: { [weak self] in self?.toggleElementBoxes() })
         controller.onFeedback = { [weak self] in self?.showFeedback($0) }
         controller.start()
+        _ = hotkeys.register(.toggleElementBoxes) { [weak self] in self?.toggleElementBoxes() }
+
+        elementStore.$elements.combineLatest(elementStore.$stats, elementStore.$lacksPermission)
+            .sink { [weak self] elements, stats, lacks in
+                self?.elementBoxes.update(elements: elements, stats: stats, lacksPermission: lacks)
+            }
+            .store(in: &cancellables)
 
         if !permissions.allRequiredGranted { onboarding.show() }
+    }
+
+    /// The element store runs only while something needs it (the overlay now; selection from M3).
+    private func toggleElementBoxes() {
+        if elementBoxes.isVisible {
+            elementBoxes.hide()
+            elementStore.stop()
+            hud.show(symbol: "square.dashed", text: "Element boxes off", tint: .secondaryLabelColor)
+        } else {
+            elementBoxes.show()
+            elementStore.start()
+            hud.show(symbol: "square.dashed.inset.filled", text: "Element boxes on", tint: .controlAccentColor)
+        }
     }
 
     private func showFeedback(_ feedback: ActivationFeedback) {
@@ -49,5 +78,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         controller?.stop()
+        elementStore.stop()
     }
 }
