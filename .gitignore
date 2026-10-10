@@ -1,0 +1,6 @@
+reference/
+.build/
+*.xcodeproj
+recordings/
+.DS_Store
+.swiftpm/

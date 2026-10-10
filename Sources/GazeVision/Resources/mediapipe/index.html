@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>html, body { margin: 0; background: #000; overflow: hidden } video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1) }</style>
+</head>
+<body>
+<video id="v" playsinline muted></video>
+<script type="module">
+// Runs MediaPipe Face Landmarker (WASM) on the webcam and posts compact numeric features to Swift.
+// No frames leave this page; only landmark coordinates are posted.
+import { FaceLandmarker } from './vision_bundle.mjs';
+
+const post = (m) => window.webkit.messageHandlers.gaze.postMessage(m);
+const base = new URL('.', location.href).href;
+
+// Face mesh indices. "A" = eye on the image's left side (subject's right eye), "B" = image right.
+const IDX = {
+  aOuter: 33, aInner: 133, aUpper: 159, aLower: 145, aIris: 468,
+  bInner: 362, bOuter: 263, bUpper: 386, bLower: 374, bIris: 473,
+};
+
+try {
+  // file:// fetches report status 0, which MediaPipe treats as failure, so load the model ourselves.
+  const model = new Uint8Array(await (await fetch(base + 'face_landmarker.task')).arrayBuffer());
+  const landmarker = await FaceLandmarker.createFromOptions(
+    { wasmLoaderPath: base + 'wasm/vision_wasm_internal.js', wasmBinaryPath: base + 'wasm/vision_wasm_internal.wasm' },
+    {
+      baseOptions: { modelAssetBuffer: model, delegate: window.__delegate || 'GPU' },
+      runningMode: 'VIDEO',
+      numFaces: 1,
+      outputFaceBlendshapes: false,
+      outputFacialTransformationMatrixes: true,
+    });
+
+  const video = document.getElementById('v');
+  video.srcObject = await navigator.mediaDevices.getUserMedia({
+    video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false,
+  });
+  await video.play();
+  // The first detection compiles GPU shaders and can block for seconds; do it before "ready".
+  await new Promise((resolve) => video.requestVideoFrameCallback(resolve));
+  landmarker.detectForVideo(video, performance.now());
+  post({ type: 'ready', width: video.videoWidth, height: video.videoHeight });
+
+  let lastTs = -1;
+  const onFrame = (now, meta) => {
+    const w = video.videoWidth, h = video.videoHeight;
+    let ts = now;
+    if (ts <= lastTs) ts = lastTs + 0.001;
+    lastTs = ts;
+    const t0 = performance.now();
+    const r = landmarker.detectForVideo(video, ts);
+    const ms = performance.now() - t0;
+    const msg = { type: 'frame', t: ts / 1000, ms, w, h };
+    const lm = r.faceLandmarks && r.faceLandmarks[0];
+    if (lm && lm.length >= 478) {
+      const p = (i) => [lm[i].x * w, lm[i].y * h];
+      const pts = {};
+      for (const [k, i] of Object.entries(IDX)) pts[k] = p(i);
+      msg.pts = pts;
+      let minX = 1, minY = 1, maxX = 0, maxY = 0;
+      for (const q of lm) { if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x; if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y; }
+      msg.bbox = [minX * w, minY * h, (maxX - minX) * w, (maxY - minY) * h];
+      const m = r.facialTransformationMatrixes && r.facialTransformationMatrixes[0];
+      if (m) {
+        const d = m.data; // column-major 4x4
+        const R = (i, j) => d[j * 4 + i];
+        msg.pose = [Math.asin(-R(2, 0)), Math.atan2(R(2, 1), R(2, 2)), Math.atan2(R(1, 0), R(0, 0))];
+        msg.tz = d[14];
+      }
+    }
+    post(msg);
+    video.requestVideoFrameCallback(onFrame);
+  };
+  video.requestVideoFrameCallback(onFrame);
+} catch (e) {
+  post({ type: 'error', message: (e && e.name ? e.name + ': ' : '') + String(e && e.message || e) + ' @ ' + String(e && e.stack || '').slice(0, 300) });
+}
+</script>
+</body>
+</html>
