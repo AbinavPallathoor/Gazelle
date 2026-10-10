@@ -4,7 +4,7 @@ Status: accepted (M0, 2026-10-11)
 
 ## Context
 
-GazeKeys needs per-frame eye corners, iris centres and head pose from the built-in webcam at about 30 fps.
+Gazelle needs per-frame eye corners, iris centres and head pose from the built-in webcam at about 30 fps.
 PLAN.md §2 listed three candidates and asked M0 to choose by measurement:
 
 1. **Apple Vision.** `VNDetectFaceLandmarksRequest` provides pupils and eye regions, and the face observation carries yaw/pitch/roll.

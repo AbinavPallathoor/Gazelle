@@ -21,7 +21,7 @@ public enum CameraError: Error, CustomStringConvertible {
 /// Webcam capture on a dedicated serial queue. Late frames are dropped, never queued.
 /// Frames are handed to `onFrame` and never retained or written anywhere.
 public final class CameraCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
-    public let queue = DispatchQueue(label: "gazekeys.camera", qos: .userInteractive)
+    public let queue = DispatchQueue(label: "gazelle.camera", qos: .userInteractive)
     private let session = AVCaptureSession()
     /// Called on `queue` with each frame and its capture time in seconds (host clock).
     public var onFrame: ((CVPixelBuffer, Double) -> Void)?

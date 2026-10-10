@@ -1,10 +1,30 @@
+# Xcode is used via DEVELOPER_DIR, so `xcode-select` can stay on the Command Line Tools.
+export DEVELOPER_DIR ?= /Applications/Xcode.app/Contents/Developer
+
+DERIVED := .build/xcode
+APP := $(DERIVED)/Build/Products/Debug/Gazelle.app
+XCODEBUILD := xcodebuild -project Gazelle.xcodeproj -scheme Gazelle -destination 'platform=macOS,arch=arm64' -derivedDataPath $(DERIVED) -quiet
 SPIKE := .build/release/gazespike
 M0_DIR := recordings/m0
 
-.PHONY: test spike m0-record m0-analyze
+.PHONY: project build test run signing spike m0-record m0-analyze
 
-test:
+project:
+	xcodegen generate --quiet
+
+build: project
+	$(XCODEBUILD) build
+
+test: project
 	swift test
+	$(XCODEBUILD) test
+
+run: build
+	-pkill -x Gazelle
+	open $(APP)
+
+signing:
+	scripts/configure-signing.sh
 
 spike:
 	swift build -c release --product gazespike

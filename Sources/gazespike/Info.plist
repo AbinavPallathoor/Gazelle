@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleIdentifier</key>
-	<string>dev.gazekeys.gazespike</string>
+	<string>dev.gazelle.gazespike</string>
 	<key>CFBundleName</key>
 	<string>gazespike</string>
 	<key>NSCameraUsageDescription</key>

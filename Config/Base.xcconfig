@@ -1,0 +1,7 @@
+// Shared build settings. Signing defaults to ad-hoc; `make signing` writes Local.xcconfig with a
+// stable Apple Development identity so macOS keeps permissions across rebuilds (docs/SIGNING.md).
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+
+#include? "Local.xcconfig"

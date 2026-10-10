@@ -5,7 +5,7 @@ import Foundation
 let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
 
 let package = Package(
-    name: "GazeKeys",
+    name: "Gazelle",
     platforms: [.macOS(.v14)],
     products: [
         .library(name: "GazeKit", targets: ["GazeKit"]),

@@ -1,0 +1,62 @@
+name: Gazelle
+options:
+  bundleIdPrefix: dev.gazelle
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+packages:
+  GazellePackage:
+    path: .
+targets:
+  Gazelle:
+    type: application
+    platform: macOS
+    sources:
+      - Sources/GazelleApp
+    dependencies:
+      - package: GazellePackage
+        product: GazeKit
+    info:
+      path: Sources/GazelleApp/Info.plist
+      properties:
+        CFBundleDisplayName: Gazelle
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSUIElement: true
+        NSCameraUsageDescription: Gazelle uses the camera to estimate where you are looking. Frames are processed in memory and never saved.
+    entitlements:
+      path: Sources/GazelleApp/Gazelle.entitlements
+      properties:
+        com.apple.security.device.camera: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.gazelle.Gazelle
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: NO
+  GazelleTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - Tests/GazelleAppTests
+    dependencies:
+      - target: Gazelle
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.gazelle.GazelleTests
+        SWIFT_VERSION: "5.0"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Gazelle.app/Contents/MacOS/Gazelle
+        BUNDLE_LOADER: $(TEST_HOST)
+schemes:
+  Gazelle:
+    build:
+      targets:
+        Gazelle: all
+    test:
+      targets:
+        - GazelleTests

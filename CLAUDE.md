@@ -1,5 +1,6 @@
-# GazeKeys
+# Gazelle
 macOS gaze + keyboard navigation app. Read PLAN.md first and work one milestone at a time.
+PLAN.md calls the app "GazeKeys"; its name is **Gazelle** (bundle ID `dev.gazelle.Gazelle`).
 
 ## Rules
 - Pure logic lives in Sources/GazeKit (no AppKit, no AVFoundation). Everything there needs unit tests.
@@ -11,5 +12,7 @@ macOS gaze + keyboard navigation app. Read PLAN.md first and work one milestone 
 - After each milestone: run `make test`, tick docs/MANUAL_CHECKS.md items, commit.
 
 ## Commands
-- make build   # generate project with XcodeGen, build
+- make build   # generate project with XcodeGen, build (Xcode via DEVELOPER_DIR, no xcode-select needed)
 - make test    # swift test + xcodebuild test
+- make run     # build and (re)launch the menu-bar app
+- make signing # write Config/Local.xcconfig with the Apple Development identity (docs/SIGNING.md)

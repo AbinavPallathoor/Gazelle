@@ -58,7 +58,7 @@ public final class MediaPipeWebProvider: NSObject, FaceFeatureProvider, WKScript
             throw MediaPipeError.resourcesMissing
         }
         if let store = WKContentRuleListStore.default(),
-           let rules = try await store.compileContentRuleList(forIdentifier: "gazekeys.block-network",
+           let rules = try await store.compileContentRuleList(forIdentifier: "gazelle.block-network",
                                                                encodedContentRuleList: Self.blockNetworkRules) {
             webView.configuration.userContentController.add(rules)
         }

@@ -4,3 +4,6 @@ reference/
 recordings/
 .DS_Store
 .swiftpm/
+Config/Local.xcconfig
+Sources/GazelleApp/Info.plist
+Sources/GazelleApp/Gazelle.entitlements
