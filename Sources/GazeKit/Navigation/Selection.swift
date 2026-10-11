@@ -55,6 +55,15 @@ public struct SelectionModel: Equatable, Sendable {
         return changed
     }
 
+    /// Selects a specific element (from gaze), if it is in the current list.
+    @discardableResult
+    public mutating func select(_ id: UInt64) -> Bool {
+        guard let e = elements.first(where: { $0.id == id }) else { return false }
+        let changed = selected?.id != id
+        selected = e
+        return changed
+    }
+
     public mutating func clear() {
         selected = nil
         elements = []

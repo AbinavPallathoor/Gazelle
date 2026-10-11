@@ -49,3 +49,23 @@ With Gazelle Active (⌃⌥G):
 - [ ] Outline is visible over a full-screen app and follows across Spaces.
 - [ ] ⌥Return double-clicks (e.g. opens a file in Finder's list view) and ⌘Return focuses without clicking.
 - [ ] Use the Mac keyboard-only for a few minutes: menu bar menus (↑ from the window into the menu bar, Return opens a menu, arrows inside it), Dock items, a System Settings pane.
+
+## M4 — Camera pipeline and live HUD
+- [x] ⌃⌥H shows the HUD; the camera indicator turns on; HUD shows ≥ 25 fps and face: tracking. (2026-10-11)
+- [ ] CPU (HUD, includes WebKit helpers) under ~25 %. **Not met:** 46 % at 640×480, 50 % at 1280×720. Deferred to M9 (lower idle frame rate).
+- [ ] Blinking shows "BLINK (gated)" and the iris dots / gaze dot do not jump.
+- [ ] Covering the camera: face LOST → PAUSED after 2 s; uncovering recovers within a second.
+- [x] Closing the HUD turns the camera off (indicator light off). (2026-10-11)
+
+## M5 — Calibration, mapping, filtering, validation
+- [x] Menu → Calibrate…: intro, 9 still dots, 12 s moving dot, 9 head-motion dots, 5 validation dots; Esc cancels at any time. (2026-10-11)
+- [x] Result screen shows the error in degrees and points with target→estimate lines; Return saves, R retries. (2026-10-11)
+- [x] After saving, the menu shows "Calibrated: x.xx°"; relaunching Gazelle keeps it (profile restored). (2026-10-11)
+- [ ] With the HUD on, the teal gaze dot follows your eyes; it is steady while fixating.
+- [x] Record validation error, jitter and distance in docs/EVAL.md and ADR 0006. (2026-10-11)
+
+## M6 — Gaze drives the selection
+- [x] With a good calibration, Active (⌃⌥G): looking at a button moves the outline to it within ~0.3 s, without flicker while you keep looking. (2026-10-11)
+- [ ] Pressing an arrow locks the selection to the keyboard; small glances do not move it; looking far away and holding releases it; 2 s without keys releases it.
+- [ ] When two buttons are close, the arrow towards the other one selects it.
+- [ ] Covering the camera freezes the outline; gaze never clicks anything.

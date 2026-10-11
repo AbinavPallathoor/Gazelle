@@ -5,7 +5,7 @@ import Foundation
 /// (WKWebView runs WASM in separate WebContent/GPU processes, which `getrusage` would miss).
 /// Helpers are matched by name, by sharing our "responsible" process (the terminal, for a CLI)
 /// and by starting after us.
-final class ProcessCPU {
+public final class ProcessCPU {
     private typealias ResponsibleFn = @convention(c) (pid_t) -> pid_t
     private let responsible: ResponsibleFn? = {
         guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid")
@@ -20,7 +20,9 @@ final class ProcessCPU {
     private var last: (wall: Double, cpu: Double)?
 
     /// Returns CPU percent (100 = one full core) since the previous call, or nil on the first call.
-    func sample() -> Double? {
+    public init() {}
+
+    public func sample() -> Double? {
         let wall = Double(DispatchTime.now().uptimeNanoseconds)
         let cpu = totalCPUNanos()
         defer { last = (wall, cpu) }
@@ -29,7 +31,7 @@ final class ProcessCPU {
     }
 
     /// Names of the helper processes currently counted, for logging.
-    func helperNames() -> [String] { helperPIDs().map(name) }
+    public func helperNames() -> [String] { helperPIDs().map(name) }
 
     private func totalCPUNanos() -> Double {
         ([getpid()] + helperPIDs()).reduce(0) { $0 + cpuNanos($1) }

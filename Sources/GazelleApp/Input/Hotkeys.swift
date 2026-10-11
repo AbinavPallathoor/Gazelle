@@ -15,6 +15,10 @@ struct Hotkey: Equatable {
     static let toggleActive = Hotkey(keyCode: UInt32(kVK_ANSI_G), modifiers: UInt32(controlKey | optionKey), display: "⌃⌥G")
     /// ⌃⌥B toggles the debug overlay that outlines every detected element.
     static let toggleElementBoxes = Hotkey(keyCode: UInt32(kVK_ANSI_B), modifiers: UInt32(controlKey | optionKey), display: "⌃⌥B")
+    /// ⌃⌥H toggles the debug HUD (and runs the camera while it is visible).
+    static let toggleHUD = Hotkey(keyCode: UInt32(kVK_ANSI_H), modifiers: UInt32(controlKey | optionKey), display: "⌃⌥H")
+    /// ⌃⌥D shows the gaze dot on screen (starts a calibration first if there is none).
+    static let toggleGazeDot = Hotkey(keyCode: UInt32(kVK_ANSI_D), modifiers: UInt32(controlKey | optionKey), display: "⌃⌥D")
     /// ⌃⌥K is the kill switch (same modifiers as the toggle, so both are easy to reach).
     static let killSwitch = Hotkey(keyCode: UInt32(kVK_ANSI_K), modifiers: UInt32(controlKey | optionKey), display: "⌃⌥K")
 }

@@ -44,12 +44,19 @@ public struct EyeFeatures: Codable, Sendable, Equatable {
     public var iris: Point2
     /// Eye opening height divided by eye width. Drops towards 0 during a blink.
     public var openness: Double
+    /// Full eyelid contour, when the backend provides it (MediaPipe: 16 points).
+    public var contour: [Point2]?
+    /// Points on the iris boundary, when the backend provides them (MediaPipe: 4 points).
+    public var irisRing: [Point2]?
 
-    public init(inner: Point2, outer: Point2, iris: Point2, openness: Double) {
+    public init(inner: Point2, outer: Point2, iris: Point2, openness: Double,
+                contour: [Point2]? = nil, irisRing: [Point2]? = nil) {
         self.inner = inner
         self.outer = outer
         self.iris = iris
         self.openness = openness
+        self.contour = contour
+        self.irisRing = irisRing
     }
 }
 
@@ -85,13 +92,17 @@ public struct FaceFeatures: Codable, Sendable, Equatable {
     public var processingMs: Double
     public var imageWidth: Double
     public var imageHeight: Double
+    /// Backend-specific scores, e.g. MediaPipe's eye blendshapes (`eyeLookInLeft`, …).
+    public var blendshapes: [String: Double]?
+    /// Eye-region landmarks in `EyeRegion.indices` order, flattened x, y, z (pixel-like units).
+    public var landmarks3D: [Double]?
 
     public init(
         timestamp: Double, backend: String,
         leftEye: EyeFeatures? = nil, rightEye: EyeFeatures? = nil,
         headPose: HeadPose? = nil, faceBounds: Rect2? = nil,
         confidence: Double, processingMs: Double,
-        imageWidth: Double, imageHeight: Double
+        imageWidth: Double, imageHeight: Double, blendshapes: [String: Double]? = nil
     ) {
         self.timestamp = timestamp
         self.backend = backend
@@ -103,6 +114,7 @@ public struct FaceFeatures: Codable, Sendable, Equatable {
         self.processingMs = processingMs
         self.imageWidth = imageWidth
         self.imageHeight = imageHeight
+        self.blendshapes = blendshapes
     }
 
     public var faceFound: Bool { confidence > 0 && leftEye != nil && rightEye != nil }

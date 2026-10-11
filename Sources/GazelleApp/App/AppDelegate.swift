@@ -11,6 +11,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let elementStore = ElementStore()
     private let elementBoxes = ElementBoxesOverlay()
     private let keyboardTap = KeyboardTap()
+    private let pipeline = GazePipeline()
+    private let hudPanel = DebugHUD()
+    private let gazeDot = GazeDotOverlay()
+    /// Show the gaze dot once the calibration started from ⌃⌥D is saved.
+    private var showDotAfterCalibration = false
+    private lazy var calibration = CalibrationController(pipeline: pipeline)
     private lazy var navigation = NavigationController(store: elementStore)
     private var cancellables: Set<AnyCancellable> = []
 
@@ -37,17 +43,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller: controller,
             showPermissions: { [weak self] in self?.onboarding.show() },
             elementBoxesVisible: { [weak self] in self?.elementBoxes.isVisible ?? false },
-            toggleElementBoxes: { [weak self] in self?.toggleElementBoxes() })
+            toggleElementBoxes: { [weak self] in self?.toggleElementBoxes() },
+            hudVisible: { [weak self] in self?.hudPanel.isVisible ?? false },
+            gazeDotVisible: { [weak self] in self?.gazeDot.isVisible ?? false },
+            toggleGazeDot: { [weak self] in self?.toggleGazeDot() },
+            toggleHUD: { [weak self] in self?.toggleHUD() },
+            calibrate: { [weak self] in self?.startCalibration() },
+            calibrationSummary: { [weak self] in self?.calibrationSummary })
         controller.onFeedback = { [weak self] in self?.showFeedback($0) }
         controller.start()
         _ = hotkeys.register(.toggleElementBoxes) { [weak self] in self?.toggleElementBoxes() }
+        _ = hotkeys.register(.toggleHUD) { [weak self] in self?.toggleHUD() }
+        _ = hotkeys.register(.toggleGazeDot) { [weak self] in self?.toggleGazeDot() }
+        pipeline.onGaze = { [weak self] p, fixating in
+            self?.gazeDot.update(p, fixating: fixating)
+            self?.navigation.gaze(p, fixating: fixating, at: ProcessInfo.processInfo.systemUptime)
+        }
+
+        if let screen = NSScreen.main, let profile = ProfileStore.load(for: screen) {
+            pipeline.setProfile(profile)
+        }
+        calibration.onFinished = { [weak self] profile in
+            guard let self else { return }
+            if let profile {
+                self.pipeline.setProfile(profile)
+                self.hud.show(symbol: "scope", text: String(format: "Calibrated: %.2f°", profile.validation.meanErrorDegrees),
+                              tint: .systemGreen)
+                if self.showDotAfterCalibration { self.gazeDot.show() }
+            }
+            self.showDotAfterCalibration = false
+            self.updateCameraRunning()
+        }
+        pipeline.$snapshot
+            .sink { [weak self] s in
+                self?.hudPanel.update(s, validation: self?.pipeline.profile?.validation)
+                self?.navigation.faceTracking = s.face == .tracking
+            }
+            .store(in: &cancellables)
 
         controller.$activation
             .map(\.isActive)
             .removeDuplicates()
             .sink { [weak self] active in
                 guard let self else { return }
+                self.navigation.gazeSigma = self.gazeSigma
                 self.navigation.setActive(active)
+                self.updateCameraRunning(active: active)
                 // @Published emits before the property changes, so pass the new value along.
                 self.updateStoreRunning(active: active)
             }
@@ -71,6 +112,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hud.show(symbol: "square.dashed.inset.filled", text: "Element boxes on", tint: .controlAccentColor)
         }
         updateStoreRunning(active: controller.activation.isActive)
+    }
+
+    private func toggleHUD() {
+        if hudPanel.isVisible { hudPanel.hide() } else { hudPanel.show() }
+        updateCameraRunning()
+    }
+
+    private func toggleGazeDot() {
+        if gazeDot.isVisible {
+            gazeDot.hide()
+        } else if pipeline.profile == nil {
+            hud.show(symbol: "scope", text: "Calibrate first: starting calibration", tint: .systemOrange)
+            showDotAfterCalibration = true
+            startCalibration()
+            return
+        } else {
+            gazeDot.show()
+            hud.show(symbol: "eye.circle", text: "Gaze dot on (\(Hotkey.toggleGazeDot.display) to hide)", tint: .systemTeal)
+        }
+        updateCameraRunning()
+    }
+
+    private func startCalibration() {
+        guard !calibration.isRunning else { return }
+        calibration.start()
+    }
+
+    /// Gaze error σ for snapping: the calibration's validation error, at least 40 pt.
+    private var gazeSigma: Double {
+        max(40, pipeline.profile?.validation.meanErrorPoints ?? 80)
+    }
+
+    /// The camera runs only while something uses it: Active with a calibration (gaze snapping),
+    /// the HUD, the gaze dot, or a calibration in progress.
+    private func updateCameraRunning(active: Bool? = nil) {
+        let isActive = active ?? controller.activation.isActive
+        if (isActive && pipeline.profile != nil) || hudPanel.isVisible || gazeDot.isVisible || calibration.isRunning {
+            pipeline.start()
+        } else {
+            pipeline.stop()
+        }
+    }
+
+    private var calibrationSummary: String? {
+        guard let v = pipeline.profile?.validation else { return nil }
+        return String(format: "Calibrated: %.2f° (%.0f pt)", v.meanErrorDegrees, v.meanErrorPoints)
     }
 
     /// The element store runs only while something needs it: Active navigation or the debug boxes.
@@ -102,5 +189,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         controller?.stop()
         elementStore.stop()
+        pipeline.stop()
     }
 }

@@ -3,7 +3,8 @@ macOS gaze + keyboard navigation app. Read PLAN.md first and work one milestone 
 PLAN.md calls the app "GazeKeys"; its name is **Gazelle** (bundle ID `dev.gazelle.Gazelle`).
 
 ## Rules
-- Pure logic lives in Sources/GazeKit (no AppKit, no AVFoundation). Everything there needs unit tests.
+- Pure logic lives in Sources/GazeKit (no AppKit, no AVFoundation; Foundation and Accelerate only). Everything there needs unit tests.
+- Before inventing an approach, check the reference repos in reference/ (shaal/eye-tracker ADRs, EyeTrax) and build on what they learned.
 - Camera, Accessibility, overlay and key interception sit behind protocols with mocks.
 - Never copy code from another repo without checking its licence. Reference repos live in reference/ (git-ignored).
 - Record non-obvious decisions as ADRs in docs/adr/.

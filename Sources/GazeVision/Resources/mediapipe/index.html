@@ -19,6 +19,12 @@ const IDX = {
   aOuter: 33, aInner: 133, aUpper: 159, aLower: 145, aIris: 468,
   bInner: 362, bOuter: 263, bUpper: 386, bLower: 374, bIris: 473,
 };
+// Full eye contours (16 points each) and iris rings (4 points each), for richer gaze features.
+const CONTOUR = {
+  a: [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246],
+  b: [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398],
+};
+const RING = { a: [469, 470, 471, 472], b: [474, 475, 476, 477] };
 
 try {
   // file:// fetches report status 0, which MediaPipe treats as failure, so load the model ourselves.
@@ -29,13 +35,13 @@ try {
       baseOptions: { modelAssetBuffer: model, delegate: window.__delegate || 'GPU' },
       runningMode: 'VIDEO',
       numFaces: 1,
-      outputFaceBlendshapes: false,
+      outputFaceBlendshapes: true,
       outputFacialTransformationMatrixes: true,
     });
 
   const video = document.getElementById('v');
   video.srcObject = await navigator.mediaDevices.getUserMedia({
-    video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false,
+    video: { width: { ideal: window.__videoWidth || 1280 }, height: { ideal: window.__videoHeight || 720 }, frameRate: { ideal: 30 } }, audio: false,
   });
   await video.play();
   // The first detection compiles GPU shaders and can block for seconds; do it before "ready".
@@ -59,6 +65,18 @@ try {
       const pts = {};
       for (const [k, i] of Object.entries(IDX)) pts[k] = p(i);
       msg.pts = pts;
+      const flat = (idx) => idx.flatMap((i) => [lm[i].x * w, lm[i].y * h]);
+      msg.contour = { a: flat(CONTOUR.a), b: flat(CONTOUR.b) };
+      // Eye-region landmarks for the EyeTrax-style feature vector; index list injected by Swift.
+      if (window.__eyeRegion) {
+        msg.lm3 = window.__eyeRegion.flatMap((i) => [lm[i].x * w, lm[i].y * h, lm[i].z * w]);
+      }
+      msg.ring = { a: flat(RING.a), b: flat(RING.b) };
+      const bs = r.faceBlendshapes && r.faceBlendshapes[0];
+      if (bs) {
+        msg.blend = {};
+        for (const c of bs.categories) if (c.categoryName.startsWith('eye')) msg.blend[c.categoryName] = c.score;
+      }
       let minX = 1, minY = 1, maxX = 0, maxY = 0;
       for (const q of lm) { if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x; if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y; }
       msg.bbox = [minX * w, minY * h, (maxX - minX) * w, (maxY - minY) * h];

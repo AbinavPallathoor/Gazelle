@@ -17,6 +17,14 @@ final class NavigationController {
     private let outline = OutlineOverlay()
     private let performer = ActionPerformer()
     private var selection = SelectionModel()
+    // M6: gaze-driven selection.
+    private var selector = GazeSelector()
+    private var engagement = EngagementState()
+    private var windowCache: (time: Double, windows: [WindowInfo]) = (-1, [])
+    /// Gaze error σ in points (from calibration validation; M8 will keep it current).
+    var gazeSigma: Double = 80
+    /// False while the face is lost: the selection is frozen.
+    var faceTracking = true
     private var cancellable: AnyCancellable?
     private(set) var isActive = false
     /// Set when activation happened before the first scan arrived.
@@ -38,6 +46,8 @@ final class NavigationController {
             cancellable = nil
             selection.clear()
             outline.hide()
+            selector = GazeSelector()
+            engagement = EngagementState()
         }
     }
 
@@ -64,10 +74,40 @@ final class NavigationController {
         log.info("\(what, privacy: .public): \(s?.kind.rawValue ?? "none", privacy: .public) \(s?.title ?? "", privacy: .public) at \(s.map { "\(Int($0.frame.x)),\(Int($0.frame.y)) \(Int($0.frame.width))x\(Int($0.frame.height))" } ?? "-", privacy: .public) of \(self.selection.elements.count)")
     }
 
+    /// A filtered gaze sample (global top-left points). Gaze moves the selection only while it
+    /// drives (not keyboard-locked), the face is tracked, and a fixation is in progress.
+    func gaze(_ p: Point2, fixating: Bool, at t: Double) {
+        guard isActive, faceTracking, !selection.elements.isEmpty else { return }
+        if !engagement.gazeDrives {
+            guard engagement.gaze(p, fixating: fixating, sigma: gazeSigma, lockedFrame: selection.selected?.frame, at: t) else { return }
+            selector.adopt(selection.selected?.id)
+            log.info("gaze takes over again")
+        }
+        if windowCache.time < 0 || t - windowCache.time > 0.5 { windowCache = (t, ElementScanner.windowList()) }
+        let gazedPID = Occlusion.topmostWindow(at: p, in: windowCache.windows.filter { $0.pid != getpid() })?.pid
+        if let e = selector.update(gaze: p, fixating: fixating, sigma: gazeSigma, elements: selection.elements,
+                                   at: t, gazedPID: gazedPID, recentIDs: recentIDs),
+           selection.select(e.id) {
+            logSelection("gaze")
+            outline.highlight(selection.selected?.frame)
+        }
+    }
+
+    private var recentIDs = Set<UInt64>()
+    private var lastWasGaze: Bool { engagement.gazeDrives }
+
     func handle(_ command: NavCommand) {
         guard isActive else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let fromGaze = lastWasGaze
+        if case .act = command {} else if command != .exit { engagement.keyPressed(at: now) }
         switch command {
         case .move(let d):
+            // Right after a gaze pick, an arrow towards a close runner-up goes to it (M6).
+            if fromGaze, let alt = selector.runnerUp, let cur = selection.selected,
+               Self.lies(alt.frame, d, of: cur.frame), selection.select(alt.id) {
+                break
+            }
             if !selection.move(d) { NSSound.beep() }
         case .next:
             selection.step(forward: true)
@@ -81,12 +121,27 @@ final class NavigationController {
             return
         }
         logSelection("\(command)")
+        selector.adopt(selection.selected?.id)
         outline.highlight(selection.selected?.frame)
+    }
+
+    private static func lies(_ r: Rect2, _ d: Direction, of cur: Rect2) -> Bool {
+        let a = r.center, c = cur.center
+        switch d {
+        case .left: return a.x < c.x && abs(a.y - c.y) < abs(a.x - c.x)
+        case .right: return a.x > c.x && abs(a.y - c.y) < abs(a.x - c.x)
+        case .up: return a.y < c.y && abs(a.x - c.x) < abs(a.y - c.y)
+        case .down: return a.y > c.y && abs(a.x - c.x) < abs(a.y - c.y)
+        }
     }
 
     private func act(_ action: ElementAction) {
         guard let target = selection.selected else { NSSound.beep(); return }
         let done = performer.perform(action, on: target, ref: store.refs[target.id])
+        if done != nil {
+            recentIDs.insert(target.id)
+            if recentIDs.count > 20 { recentIDs.removeFirst() }
+        }
         if done == nil { NSSound.beep() }
         // Typing into a field needs the keys Gazelle would otherwise swallow.
         if action == .press && target.kind.isEditable && done != nil {

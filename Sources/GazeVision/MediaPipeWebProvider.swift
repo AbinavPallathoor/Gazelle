@@ -29,9 +29,15 @@ public final class MediaPipeWebProvider: NSObject, FaceFeatureProvider, WKScript
     private var ready: CheckedContinuation<Void, Error>?
     /// "GPU" or "CPU" inference delegate.
     public let delegate: String
+    /// Requested camera resolution. MediaPipe resizes internally, so a smaller frame mostly
+    /// saves decode and copy work, at the cost of fewer pixels on the eyes.
+    public let videoWidth: Int
+    public let videoHeight: Int
 
-    public init(delegate: String = "GPU") {
+    public init(delegate: String = "GPU", videoWidth: Int = 1280, videoHeight: Int = 720) {
         self.delegate = delegate
+        self.videoWidth = videoWidth
+        self.videoHeight = videoHeight
         (features, continuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(8))
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
@@ -42,7 +48,8 @@ public final class MediaPipeWebProvider: NSObject, FaceFeatureProvider, WKScript
         super.init()
         config.userContentController.add(self, name: "gaze")
         config.userContentController.addUserScript(WKUserScript(
-            source: "window.__delegate = '\(delegate)';", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            source: "window.__delegate = '\(delegate)'; window.__videoWidth = \(videoWidth); window.__videoHeight = \(videoHeight); window.__eyeRegion = \(EyeRegion.indices);",
+            injectionTime: .atDocumentStart, forMainFrameOnly: true))
         webView.uiDelegate = self
         webView.navigationDelegate = self
     }
@@ -108,11 +115,16 @@ public final class MediaPipeWebProvider: NSObject, FaceFeatureProvider, WKScript
             guard let a = pts[k], a.count == 2 else { return nil }
             return Point2(a[0].doubleValue, a[1].doubleValue)
         }
+        func points(_ group: String, _ s: String) -> [Point2]? {
+            guard let flat = (m[group] as? [String: [NSNumber]])?[s], flat.count >= 2 else { return nil }
+            return stride(from: 0, to: flat.count - 1, by: 2).map { Point2(flat[$0].doubleValue, flat[$0 + 1].doubleValue) }
+        }
         func eye(_ s: String) -> EyeFeatures? {
             guard let inner = p(s + "Inner"), let outer = p(s + "Outer"), let iris = p(s + "Iris"),
                   let up = p(s + "Upper"), let lo = p(s + "Lower") else { return nil }
             let w = (outer - inner).length
-            return EyeFeatures(inner: inner, outer: outer, iris: iris, openness: w > 0 ? (up - lo).length / w : 0)
+            return EyeFeatures(inner: inner, outer: outer, iris: iris, openness: w > 0 ? (up - lo).length / w : 0,
+                               contour: points("contour", s), irisRing: points("ring", s))
         }
         f.leftEye = eye("a")
         f.rightEye = eye("b")
@@ -121,6 +133,12 @@ public final class MediaPipeWebProvider: NSObject, FaceFeatureProvider, WKScript
         }
         if let pose = (m["pose"] as? [NSNumber])?.map(\.doubleValue), pose.count == 3 {
             f.headPose = HeadPose(yaw: pose[0], pitch: pose[1], roll: pose[2])
+        }
+        if let lm3 = m["lm3"] as? [NSNumber], lm3.count == EyeRegion.indices.count * 3 {
+            f.landmarks3D = lm3.map(\.doubleValue)
+        }
+        if let blend = m["blend"] as? [String: NSNumber] {
+            f.blendshapes = blend.mapValues(\.doubleValue)
         }
         f.confidence = f.leftEye != nil && f.rightEye != nil ? 1 : 0
         return f

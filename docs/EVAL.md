@@ -12,6 +12,29 @@ Targets are goals to measure against, not results already achieved (PLAN.md §6)
 | Latency, gaze to outline | high-speed screen recording | < ≈ 100 ms | – |
 | CPU and energy | Instruments | low enough to leave running | – |
 
+## M5 — Calibration accuracy and fixation jitter
+
+Measured by the validation step at the end of each calibration (5 held-out dots, 1 s each). Thresholds:
+
+| Metric | Threshold | Measured |
+|---|---|---|
+| Held-out error, head still | ≤ 2.0° (goal ≈ 1.5°) | **0.92° (62 pt)** at ~655 mm, eye-region model (2026-10-11). An earlier run the same day gave 1.59° (103 pt). |
+| Steady-fixation jitter (std of unfiltered predictions while fixating one dot) | ≤ 1.0° | **0.99°** (67 pt), borderline |
+| Same, after the One Euro filter | ≤ 0.5° | not yet measured |
+
+History on the dev Mac, 2026-10-11:
+
+| Run | What changed | Validation error |
+|---|---|---|
+| 1 | Camera host covered → frozen frames | 3.51°, invalid |
+| 2 | Live frames; compact iris features; λ effectively unregularised; head pitch −27° | 5.53° |
+| 3 | Reference-based redesign: EyeTrax eye-region features, λ by held-out target, pursuit phase | 1.59° |
+| 4 | Same design, recalibrated | **0.92°** |
+
+User report after run 3: "works decently well, not precise yet, heading in the right direction."
+
+Synthetic (unit tests, `GazeTests.swift`): exact mapping recovered to < 0.5 pt; noisy labels < 6 pt; simulated eye with head motion < 40 pt held-out (≈ 21 pt measured, 1.3× the still-head error).
+
 ## M0 — Vision backend comparison
 
 Protocol: `make m0-record` then `make m0-analyze`. Each backend gets 60 s looking at a centred dot with

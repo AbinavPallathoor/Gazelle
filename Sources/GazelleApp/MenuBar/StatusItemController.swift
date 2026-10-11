@@ -10,14 +10,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let showPermissions: () -> Void
     private let elementBoxesVisible: () -> Bool
     private let toggleElementBoxes: () -> Void
+    private let hudVisible: () -> Bool
+    private let toggleHUD: () -> Void
+    private let gazeDotVisible: () -> Bool
+    private let toggleGazeDot: () -> Void
+    private let calibrate: () -> Void
+    private let calibrationSummary: () -> String?
     private var cancellables: Set<AnyCancellable> = []
 
     init(controller: AppController, showPermissions: @escaping () -> Void,
-         elementBoxesVisible: @escaping () -> Bool, toggleElementBoxes: @escaping () -> Void) {
+         elementBoxesVisible: @escaping () -> Bool, toggleElementBoxes: @escaping () -> Void,
+         hudVisible: @escaping () -> Bool, gazeDotVisible: @escaping () -> Bool, toggleGazeDot: @escaping () -> Void,
+         toggleHUD: @escaping () -> Void,
+         calibrate: @escaping () -> Void, calibrationSummary: @escaping () -> String?) {
         self.controller = controller
         self.showPermissions = showPermissions
         self.elementBoxesVisible = elementBoxesVisible
         self.toggleElementBoxes = toggleElementBoxes
+        self.hudVisible = hudVisible
+        self.toggleHUD = toggleHUD
+        self.gazeDotVisible = gazeDotVisible
+        self.toggleGazeDot = toggleGazeDot
+        self.calibrate = calibrate
+        self.calibrationSummary = calibrationSummary
         super.init()
         let menu = NSMenu()
         menu.delegate = self
@@ -75,6 +90,20 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         boxes.target = self
         boxes.state = elementBoxesVisible() ? .on : .off
         menu.addItem(boxes)
+        let hud = NSMenuItem(title: "Show HUD (\(Hotkey.toggleHUD.display))", action: #selector(toggleHUDAction), keyEquivalent: "")
+        hud.target = self
+        hud.state = hudVisible() ? .on : .off
+        menu.addItem(hud)
+        let dot = NSMenuItem(title: "Show Gaze Dot (\(Hotkey.toggleGazeDot.display))", action: #selector(toggleDotAction), keyEquivalent: "")
+        dot.target = self
+        dot.state = gazeDotVisible() ? .on : .off
+        menu.addItem(dot)
+
+        menu.addItem(.separator())
+        menu.addItem(info(calibrationSummary() ?? "Not calibrated"))
+        let cal = NSMenuItem(title: "Calibrate…", action: #selector(calibrateAction), keyEquivalent: "")
+        cal.target = self
+        menu.addItem(cal)
 
         menu.addItem(.separator())
         let perms = NSMenuItem(
@@ -95,4 +124,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func rearm() { controller.rearm() }
     @objc private func openPermissions() { showPermissions() }
     @objc private func toggleBoxes() { toggleElementBoxes() }
+    @objc private func toggleHUDAction() { toggleHUD() }
+    @objc private func toggleDotAction() { toggleGazeDot() }
+    @objc private func calibrateAction() { calibrate() }
 }
