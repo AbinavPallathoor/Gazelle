@@ -31,11 +31,11 @@ final class DebugHUD {
 }
 
 private final class HUDPanel: NSPanel {
-    let view = HUDView(frame: NSRect(x: 0, y: 0, width: 340, height: 350))
+    let view = HUDView(frame: NSRect(x: 0, y: 0, width: 360, height: 400))
 
     init() {
         let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let frame = NSRect(x: screen.maxX - 356, y: screen.maxY - 366, width: 340, height: 350)
+        let frame = NSRect(x: screen.maxX - 376, y: screen.maxY - 416, width: 360, height: 400)
         super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         isOpaque = false
         backgroundColor = .clear
@@ -95,6 +95,11 @@ private final class HUDView: NSView {
             if let v = validation {
                 lines.append((String(format: "calibration: %.2f° (%.0f pt), jitter %.2f°", v.meanErrorDegrees, v.meanErrorPoints, v.meanJitterDegrees), dim))
             }
+            if let sigma = s.sigma {
+                lines.append((String(format: "learning: σ %.0f pt · %d learned · %d skipped", sigma, s.learnedAccepted, s.learnedRejected), white))
+            }
+            if let last = s.lastLearning { lines.append(("last click: " + last, dim)) }
+            if s.suggestsRecentre { lines.append(("accuracy dropped: press ⌃⌥R to re-centre", .systemOrange)) }
         } else {
             lines.append(("not calibrated: menu → Calibrate…", dim))
         }

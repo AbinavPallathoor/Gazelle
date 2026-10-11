@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import GazeKit
 
 @main
 @MainActor
@@ -38,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyboardTap.onCommand = { [weak self] in self?.navigation.handle($0) }
         keyboardTap.onKill = { [weak self] in self?.controller.kill() }
         navigation.onExitRequested = { [weak self] reason in self?.controller.deactivate(reason: reason) }
+        navigation.onConfirmed = { [weak self] frame, rank, uptime in
+            self?.pipeline.confirm(target: frame, rank: rank, uptime: uptime)
+        }
         onboarding = OnboardingWindowController(model: permissions)
         statusItem = StatusItemController(
             controller: controller,
@@ -55,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = hotkeys.register(.toggleElementBoxes) { [weak self] in self?.toggleElementBoxes() }
         _ = hotkeys.register(.toggleHUD) { [weak self] in self?.toggleHUD() }
         _ = hotkeys.register(.toggleGazeDot) { [weak self] in self?.toggleGazeDot() }
+        _ = hotkeys.register(.recentre) { [weak self] in self?.recentre() }
         pipeline.onGaze = { [weak self] p, fixating in
             self?.gazeDot.update(p, fixating: fixating)
             self?.navigation.gaze(p, fixating: fixating, at: ProcessInfo.processInfo.systemUptime)
@@ -78,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] s in
                 self?.hudPanel.update(s, validation: self?.pipeline.profile?.validation)
                 self?.navigation.faceTracking = s.face == .tracking
+                if let sigma = s.sigma { self?.navigation.gazeSigma = sigma }
             }
             .store(in: &cancellables)
 
@@ -139,16 +145,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         calibration.start()
     }
 
-    /// Gaze error σ for snapping: the calibration's validation error, at least 40 pt.
+    /// Gaze error σ for snapping: the online learner's rolling estimate (M8), which starts at
+    /// the calibration's validation error; at least 40 pt.
     private var gazeSigma: Double {
-        max(40, pipeline.profile?.validation.meanErrorPoints ?? 80)
+        max(40, pipeline.sigma ?? pipeline.profile?.validation.meanErrorPoints ?? 80)
+    }
+
+    private var recentring = false
+    private let recentreDot = RecentreDot()
+
+    /// Quick one-point re-centre: look at the dot in the middle of the screen for ~2 s.
+    private func recentre() {
+        guard !recentring else { return }
+        guard pipeline.profile != nil else {
+            hud.show(symbol: "scope", text: "Calibrate first", tint: .systemOrange)
+            return
+        }
+        guard let screen = NSScreen.main else { return }
+        recentring = true
+        let f = ProfileStore.topLeftFrame(of: screen)
+        let target = Point2(f.x + f.width / 2, f.y + f.height / 2)
+        pipeline.start()
+        recentreDot.show(at: target)
+        // Give the camera a moment if it was just started.
+        DispatchQueue.main.asyncAfter(deadline: .now() + (pipeline.snapshot.fps > 0 ? 0 : 2.5)) { [weak self] in
+            self?.pipeline.recentre(at: target) {
+                guard let self else { return }
+                self.recentreDot.hide()
+                self.recentring = false
+                self.hud.show(symbol: "scope", text: "Re-centred", tint: .systemGreen)
+                self.updateCameraRunning()
+            }
+        }
     }
 
     /// The camera runs only while something uses it: Active with a calibration (gaze snapping),
     /// the HUD, the gaze dot, or a calibration in progress.
     private func updateCameraRunning(active: Bool? = nil) {
         let isActive = active ?? controller.activation.isActive
-        if (isActive && pipeline.profile != nil) || hudPanel.isVisible || gazeDot.isVisible || calibration.isRunning {
+        if (isActive && pipeline.profile != nil) || hudPanel.isVisible || gazeDot.isVisible || calibration.isRunning || recentring {
             pipeline.start()
         } else {
             pipeline.stop()

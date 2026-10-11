@@ -20,6 +20,7 @@ func usage() -> Never {
     usage:
       gazespike record --backend vision|mediapipe [--label still] [--seconds 60] [--countdown 3] [--delegate GPU|CPU] [--out recordings]
       gazespike analyze <file.jsonl>...
+      gazespike tune <profile.json>
     """)
 }
 
@@ -49,6 +50,10 @@ case "analyze":
             fail("\(path): \(error)")
         }
     }
+
+case "tune":
+    guard args.count == 3 else { usage() }
+    do { try Tune.run(profilePath: args[2]) } catch { fail("\(error)") }
 
 case "record":
     let o = options(args.dropFirst(2))

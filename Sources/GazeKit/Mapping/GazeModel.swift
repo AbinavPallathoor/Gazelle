@@ -73,13 +73,25 @@ public struct GazeModel: Codable, Sendable, Equatable {
         return Int(s.target.x.rounded()) &* 100_003 &+ Int(s.target.y.rounded())
     }
 
-    public static func fit(_ samples: [Sample], featureSet: FeatureSet) -> GazeModel? {
+    public static func fit(_ samples: [Sample], featureSet: FeatureSet,
+                           fixedRatios: (x: Double, y: Double)? = nil) -> GazeModel? {
         let usable = samples.compactMap { s in vector(s.features, featureSet).map { (s, $0) } }
         guard usable.count >= 20, usable.count * 2 >= samples.count else { return nil }
         guard let ridge = GroupedRidge.fit(rows: usable.map(\.1), targets: usable.map(\.0.target),
-                                           groups: usable.map { groupID($0.0) }, weights: usable.map(\.0.weight))
+                                           groups: usable.map { groupID($0.0) }, weights: usable.map(\.0.weight),
+                                           fixedRatios: fixedRatios)
         else { return nil }
         return GazeModel(featureSet: featureSet, ridge: ridge, comparison: [featureSet.rawValue: ridge.heldOutError])
+    }
+
+    /// Refits this model's feature set on new samples, keeping its regularisation (no
+    /// cross-validation, so it is fast enough to run after every confirmed click).
+    public func refit(_ samples: [Sample]) -> GazeModel? {
+        guard var m = GazeModel.fit(samples, featureSet: featureSet,
+                                    fixedRatios: (ridge.lambdaRatioX, ridge.lambdaRatioY)) else { return nil }
+        m.comparison = comparison
+        m.ridge.heldOutError = ridge.heldOutError
+        return m
     }
 
     /// Fits every feature set the samples support and keeps the one with the lowest held-out

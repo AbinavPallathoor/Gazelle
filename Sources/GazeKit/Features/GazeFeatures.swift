@@ -69,6 +69,26 @@ public struct GazeFeatures: Codable, Sendable, Equatable {
                   eyeRegion: f.landmarks3D.flatMap(EyeRegion.features))
     }
 
+    /// Element-wise mean of several frames (one fixation), used as a single online sample.
+    public static func mean(_ fs: [GazeFeatures]) -> GazeFeatures? {
+        guard let first = fs.first else { return nil }
+        let n = Double(fs.count)
+        func avg(_ k: (GazeFeatures) -> Double) -> Double { fs.reduce(0) { $0 + k($1) } / n }
+        func avgP(_ k: (GazeFeatures) -> Point2) -> Point2 { Point2(avg { k($0).x }, avg { k($0).y }) }
+        var eyeRegion: [Double]?
+        if let len = first.eyeRegion?.count, fs.allSatisfy({ $0.eyeRegion?.count == len }) {
+            var acc = [Double](repeating: 0, count: len)
+            for f in fs { for (i, v) in f.eyeRegion!.enumerated() { acc[i] += v } }
+            eyeRegion = acc.map { $0 / n }
+        }
+        return GazeFeatures(timestamp: fs.last!.timestamp, iris: avgP(\.iris), irisLeft: avgP(\.irisLeft),
+                            irisRight: avgP(\.irisRight), openness: avg(\.openness),
+                            pose: HeadPose(yaw: avg(\.pose.yaw), pitch: avg(\.pose.pitch), roll: avg(\.pose.roll)),
+                            headPosition: avgP(\.headPosition), headScale: avg(\.headScale),
+                            interocularPx: avg(\.interocularPx), imageWidth: first.imageWidth,
+                            extra: nil, eyeRegion: eyeRegion)
+    }
+
     /// Viewing distance in millimetres from the interocular distance, assuming an average adult
     /// eye-centre separation and the camera's horizontal field of view. Rough (±20 %), used only
     /// to express errors in degrees.

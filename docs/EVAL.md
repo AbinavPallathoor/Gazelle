@@ -7,7 +7,7 @@ Targets are goals to measure against, not results already achieved (PLAN.md §6)
 | Held-out gaze error, head still | validation dots (M5) | ≈ 1.5° or better | – |
 | Error under head movement | M7 protocol | within ≈ 1.5× the still error | – |
 | Top-1 and top-3 snap accuracy | look at a named target, press activate (M6) | set after first measurement | – |
-| Drift over 30 min | rolling σ (M8) | does not grow | – |
+| Drift over 30 min | rolling σ (M8) | does not grow | synthetic: tilt recovered to < 1.5× baseline in 25 clicks; live session pending |
 | Recalibrations per day | counter (M8) | 0 after the first calibration | – |
 | Latency, gaze to outline | high-speed screen recording | < ≈ 100 ms | – |
 | CPU and energy | Instruments | low enough to leave running | – |
@@ -20,7 +20,7 @@ Measured by the validation step at the end of each calibration (5 held-out dots,
 |---|---|---|
 | Held-out error, head still | ≤ 2.0° (goal ≈ 1.5°) | **0.92° (62 pt)** at ~655 mm, eye-region model (2026-10-11). An earlier run the same day gave 1.59° (103 pt). |
 | Steady-fixation jitter (std of unfiltered predictions while fixating one dot) | ≤ 1.0° | **0.99°** (67 pt), borderline |
-| Same, after the One Euro filter | ≤ 0.5° | not yet measured |
+| Same, after the One Euro filter | ≤ 0.5° | replay (`gazespike tune`): 30.5 pt raw → ≈ 26 pt at ≈ 90 ms lag (≈ 0.38°). Most of the remaining jitter is slow wander within a fixation. |
 
 History on the dev Mac, 2026-10-11:
 

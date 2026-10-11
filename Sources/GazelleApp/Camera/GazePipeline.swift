@@ -22,6 +22,12 @@ struct PipelineSnapshot: Equatable {
     var calibrated = false
     var error: String?
     var resolution = ""
+    // M8 online learning.
+    var sigma: Double?
+    var learnedAccepted = 0
+    var learnedRejected = 0
+    var lastLearning: String?
+    var suggestsRecentre = false
 }
 
 /// Runs the chosen vision backend (MediaPipe in a WKWebView, ADR 0001) continuously and turns
@@ -36,13 +42,22 @@ final class GazePipeline: ObservableObject {
     var onGaze: ((Point2, Bool) -> Void)?
 
     private(set) var profile: CalibrationProfile?
+    /// Online calibration from confirmed clicks (M8). Predictions go through it.
+    private(set) var learner: OnlineCalibrator?
+    private let learnQueue = DispatchQueue(label: "gazelle.learning", qos: .utility)
+    private var saveWork: DispatchWorkItem?
+    /// Frame timestamps come from the web view's clock; this maps them to system uptime.
+    private var clockOffset: Double?
+    /// Collecting predictions for a one-point re-centre.
+    private var recentreCollect: (target: Point2, until: Double, points: [Point2], done: () -> Void)?
     private var provider: MediaPipeWebProvider?
     private var host: CameraHostPanel?
     private var consumer: Task<Void, Never>?
     private var face = FaceTrackingState(pauseAfter: 2)
     private var blink = BlinkGate()
     private var stall = StallDetector()
-    private var smoother = OneEuroFilter2D(minCutoff: 0.8, beta: 0.004)
+    /// Tuned by replaying held-out fixations (`gazespike tune`): 30 pt raw jitter → ~26 pt at ~90 ms lag.
+    private var smoother = OneEuroFilter2D(minCutoff: 0.3, beta: 0.001)
     private var fixation = FixationDetector(maxDispersion: 60, minDuration: 0.15, saccadeSpeed: 1500)
     private let cpu = ProcessCPU()
     private var frameTimes: [Double] = []
@@ -61,6 +76,68 @@ final class GazePipeline: ObservableObject {
         profile = p
         smoother.reset()
         fixation.reset()
+        learner = p.map {
+            OnlineCalibrator(model: $0.learnedModel ?? $0.model, anchors: $0.samples,
+                             baseSigma: $0.validation.meanErrorPoints, state: $0.online ?? .init())
+        }
+    }
+
+    /// Current gaze error estimate in points, for snapping.
+    var sigma: Double? { learner?.sigma }
+
+    /// A confirmed activation (M8). `uptime` is the key press time (system uptime); `rank` the
+    /// element's rank among gaze candidates then.
+    func confirm(target: Rect2, rank: Int?, uptime: Double) {
+        guard var learner, let offset = clockOffset else { return }
+        let (decision, samples) = learner.confirm(target: target, rank: rank, at: uptime - offset)
+        self.learner = learner
+        switch decision {
+        case .accepted(let r):
+            snapshot.lastLearning = String(format: "learned (error was %.0f pt)", r)
+            log.info("learning: accepted, residual \(r, format: .fixed(precision: 0)) pt, σ \(learner.sigma, format: .fixed(precision: 0))")
+        case .rejected(let why):
+            snapshot.lastLearning = "skipped: " + why.rawValue
+            log.info("learning: rejected (\(why.rawValue, privacy: .public))")
+        }
+        guard let samples else { return }
+        let snapshotLearner = learner
+        learnQueue.async { [weak self] in
+            let model = snapshotLearner.refit(samples)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, let model, self.learner != nil else { return }
+                    self.learner?.install(model)
+                    self.scheduleSave()
+                }
+            }
+        }
+    }
+
+    /// One-point re-centre: shows nothing itself; the caller displays a dot at `target` and
+    /// this collects predictions for `seconds`, then corrects the offset.
+    func recentre(at target: Point2, seconds: Double = 1.5, done: @escaping () -> Void) {
+        guard learner != nil, let last = frameTimes.last else { done(); return }
+        recentreCollect = (target, last + 0.4 + seconds, [], done)   // 0.4 s to move the eyes there
+        recentreStart = last + 0.4
+    }
+    private var recentreStart = 0.0
+
+    private func scheduleSave() {
+        saveWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.saveLearned() } }
+        saveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+    }
+
+    /// Writes the learned state into the profile on disk.
+    func saveLearned() {
+        guard var p = profile, let learner else { return }
+        p.online = learner.state
+        p.learnedModel = learner.model
+        profile = p
+        do { try ProfileStore.save(p) } catch {
+            log.error("could not save learned state: \(String(describing: error), privacy: .public)")
+        }
     }
 
     func start() {
@@ -102,6 +179,7 @@ final class GazePipeline: ObservableObject {
         host = nil
         publishTimer?.invalidate()
         publishTimer = nil
+        if saveWork != nil { saveWork?.cancel(); saveWork = nil; saveLearned() }
         snapshot = PipelineSnapshot(calibrated: profile != nil)
         latestFeatures = nil
         latestGaze = nil
@@ -110,6 +188,9 @@ final class GazePipeline: ObservableObject {
 
     private func consume(_ raw: FaceFeatures) {
         let t = raw.timestamp
+        let uptimeNow = ProcessInfo.processInfo.systemUptime
+        // Track the web clock → uptime offset (the smallest seen is the least delayed frame).
+        clockOffset = min(clockOffset ?? .infinity, uptimeNow - t)
         frameTimes.append(t)
         processing.append(raw.processingMs)
         let g = GazeFeatures(raw)
@@ -120,8 +201,23 @@ final class GazePipeline: ObservableObject {
         latestFeatures = g
         onFrame?(usable, t)
 
-        guard let usable, let profile else { return }
-        let point = smoother.filter(profile.model.predict(usable), at: t)
+        guard var learner else { return }
+        learner.observe(usable, ok: g != nil && !stall.isStalled, fixating: fixation.isFixating, at: t)
+        self.learner = learner
+        guard let usable else { return }
+        let raw = learner.predict(usable)
+        if var rc = recentreCollect {
+            if t >= recentreStart { rc.points.append(raw) }
+            recentreCollect = rc
+            if t >= rc.until {
+                recentreCollect = nil
+                self.learner?.recentre(predictions: rc.points, target: rc.target)
+                log.info("re-centred with \(rc.points.count) samples")
+                scheduleSave()
+                rc.done()
+            }
+        }
+        let point = smoother.filter(raw, at: t)
         fixation.add(point, at: t)
         latestGaze = point
         onGaze?(point, fixation.isFixating)
@@ -142,6 +238,10 @@ final class GazePipeline: ObservableObject {
         s.fixating = fixation.isFixating
         s.stalled = stall.isStalled
         s.calibrated = profile != nil
+        s.sigma = learner?.sigma
+        s.learnedAccepted = learner?.state.accepted ?? 0
+        s.learnedRejected = learner?.state.rejected ?? 0
+        s.suggestsRecentre = learner?.suggestsRecentre ?? false
         snapshot = s
     }
 }

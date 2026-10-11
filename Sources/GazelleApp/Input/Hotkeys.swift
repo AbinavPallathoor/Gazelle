@@ -19,6 +19,8 @@ struct Hotkey: Equatable {
     static let toggleHUD = Hotkey(keyCode: UInt32(kVK_ANSI_H), modifiers: UInt32(controlKey | optionKey), display: "⌃⌥H")
     /// ⌃⌥D shows the gaze dot on screen (starts a calibration first if there is none).
     static let toggleGazeDot = Hotkey(keyCode: UInt32(kVK_ANSI_D), modifiers: UInt32(controlKey | optionKey), display: "⌃⌥D")
+    /// ⌃⌥R: quick one-point re-centre of the gaze estimate (M8).
+    static let recentre = Hotkey(keyCode: UInt32(kVK_ANSI_R), modifiers: UInt32(controlKey | optionKey), display: "⌃⌥R")
     /// ⌃⌥K is the kill switch (same modifiers as the toggle, so both are easy to reach).
     static let killSwitch = Hotkey(keyCode: UInt32(kVK_ANSI_K), modifiers: UInt32(controlKey | optionKey), display: "⌃⌥K")
 }

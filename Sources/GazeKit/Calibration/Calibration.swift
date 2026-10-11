@@ -293,6 +293,9 @@ public struct CalibrationProfile: Codable, Sendable, Equatable {
     public var samples: [GazeModel.Sample]
     /// Held-out validation samples, kept for offline model comparison (nil in old profiles).
     public var validationSamples: [GazeModel.Sample]?
+    /// What online learning has accumulated since calibration (M8), and its current model.
+    public var online: OnlineCalibrator.State?
+    public var learnedModel: GazeModel?
 
     public init(createdAt: Date, displayKey: String, cameraKey: String, geometry: ScreenGeometry,
                 layout: CalibrationLayout, model: GazeModel, crossValidatedErrorPoints: Double,

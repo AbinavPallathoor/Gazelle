@@ -116,7 +116,10 @@ public struct GroupedRidge: Codable, Sendable, Equatable {
     ///   - targets: screen points.
     ///   - groups: group id per row; rows of one calibration target (or one pursuit segment) share an id.
     ///   - weights: optional per-row weights (e.g. tracking quality).
-    public static func fit(rows: [[Double]], targets: [Point2], groups: [Int], weights: [Double]? = nil) -> GroupedRidge? {
+    ///   - fixedRatios: skip cross-validation and use these λ ratios (x, y), e.g. for fast online
+    ///     refits that keep the regularisation chosen at calibration.
+    public static func fit(rows: [[Double]], targets: [Point2], groups: [Int], weights: [Double]? = nil,
+                           fixedRatios: (x: Double, y: Double)? = nil) -> GroupedRidge? {
         let n = rows.count
         guard n > 0, let p = rows.first?.count, p > 0, targets.count == n, groups.count == n else { return nil }
         let w = weights ?? [Double](repeating: 1, count: n)
@@ -170,7 +173,9 @@ public struct GroupedRidge: Codable, Sendable, Equatable {
         var bestX = ratioGrid.firstIndex { $0 >= fallbackRatio }!
         var bestY = bestX
         var heldOut = Double.nan
-        if ids.count >= 3 {
+        var ratioX: Double { fixedRatios?.x ?? ratioGrid[bestX] }
+        var ratioY: Double { fixedRatios?.y ?? ratioGrid[bestY] }
+        if fixedRatios == nil, ids.count >= 3 {
             // predictions[k][r] for each held-out group and λ ratio. One eigendecomposition of the
             // centred training Gram matrix per fold makes every λ cheap:
             // β(λ) = Q (Λ + λ)⁻¹ Qᵀ r, so a prediction is Σ_i (Qᵀz)_i (Qᵀr)_i / (Λ_i + λ).
@@ -213,10 +218,10 @@ public struct GroupedRidge: Codable, Sendable, Equatable {
                 hypot(predX[k][bestX] - stats[k].sx / stats[k].sw, predY[k][bestY] - stats[k].sy / stats[k].sw)
             })
         }
-        guard let (ix, bx) = total.solve(lambda: ratioGrid[bestX] * total.sw, axisX: true, p: p),
-              let (iy, by) = total.solve(lambda: ratioGrid[bestY] * total.sw, axisX: false, p: p) else { return nil }
+        guard let (ix, bx) = total.solve(lambda: ratioX * total.sw, axisX: true, p: p),
+              let (iy, by) = total.solve(lambda: ratioY * total.sw, axisX: false, p: p) else { return nil }
         return GroupedRidge(means: means, scales: scales, interceptX: ix, interceptY: iy, coefX: bx, coefY: by,
-                            lambdaRatioX: ratioGrid[bestX], lambdaRatioY: ratioGrid[bestY],
+                            lambdaRatioX: ratioX, lambdaRatioY: ratioY,
                             heldOutError: heldOut, groups: ids.count)
     }
 

@@ -69,3 +69,10 @@ With Gazelle Active (⌃⌥G):
 - [ ] Pressing an arrow locks the selection to the keyboard; small glances do not move it; looking far away and holding releases it; 2 s without keys releases it.
 - [ ] When two buttons are close, the arrow towards the other one selects it.
 - [ ] Covering the camera freezes the outline; gaze never clicks anything.
+
+## M8 — Online learning and drift control
+- [ ] HUD (⌃⌥H) shows "learning: σ … · n learned · m skipped"; pressing Return on buttons/links while Active increases "learned"; activating a big area (text view, row) shows "skipped: target has no clear centre".
+- [ ] Relaunching Gazelle keeps the learned count (state saved in the profile).
+- [ ] ⌃⌥R shows a dot in the middle of the screen; after ~2 s "Re-centred".
+- [ ] 30-minute session of normal use: σ does not grow (record start/end σ in docs/EVAL.md).
+- [ ] Tilt the laptop screen noticeably mid-session: σ rises, then recovers after a number of confirmed clicks (record how many).

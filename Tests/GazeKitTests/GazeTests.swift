@@ -8,6 +8,8 @@ struct SimulatedUser {
     var rng = SplitMix64(seed: 11)
     var noise = 0.002          // iris noise, eye widths
     let screen = Rect2(x: 0, y: 0, width: 1440, height: 900)
+    /// A systematic change after calibration (e.g. the screen tilted): added to the iris offset.
+    var bias = Point2(0, 0)
 
     func trueIris(target: Point2, pose: HeadPose, head: Point2) -> Point2 {
         let u = (target.x - 720) / 720, v = (target.y - 450) / 450
@@ -19,7 +21,7 @@ struct SimulatedUser {
         let pose = headMoving ? HeadPose(yaw: 0.12 * sin(1.7 * t), pitch: 0.08 * sin(1.1 * t + 1), roll: 0.03 * sin(t))
                               : HeadPose(yaw: 0.01, pitch: -0.02, roll: 0)
         let head = headMoving ? Point2(0.5 + 0.06 * sin(0.9 * t), 0.45 + 0.04 * cos(1.3 * t)) : Point2(0.5, 0.45)
-        var iris = trueIris(target: target, pose: pose, head: head)
+        var iris = trueIris(target: target, pose: pose, head: head) + bias
         iris.x += rng.uniform(-1, 1) * noise * 3.0.squareRoot()
         iris.y += rng.uniform(-1, 1) * noise * 3.0.squareRoot()
         return GazeFeatures(timestamp: t, iris: iris, irisLeft: iris, irisRight: iris, openness: blink ? 0.05 : 0.3,

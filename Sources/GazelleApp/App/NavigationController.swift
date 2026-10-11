@@ -12,6 +12,10 @@ private let log = Logger(subsystem: "dev.gazelle.Gazelle", category: "navigation
 final class NavigationController {
     /// Called when a command ends Active mode (Esc, or after activating a text field).
     var onExitRequested: ((_ reason: String) -> Void)?
+    /// Called after a successful activation, for online learning (M8): the element's frame, its
+    /// rank among gaze candidates at that moment, and the key time (system uptime).
+    var onConfirmed: ((_ frame: Rect2, _ rank: Int?, _ uptime: Double) -> Void)?
+    private var lastGaze: Point2?
 
     private let store: ElementStore
     private let outline = OutlineOverlay()
@@ -78,6 +82,7 @@ final class NavigationController {
     /// drives (not keyboard-locked), the face is tracked, and a fixation is in progress.
     func gaze(_ p: Point2, fixating: Bool, at t: Double) {
         guard isActive, faceTracking, !selection.elements.isEmpty else { return }
+        lastGaze = p
         if !engagement.gazeDrives {
             guard engagement.gaze(p, fixating: fixating, sigma: gazeSigma, lockedFrame: selection.selected?.frame, at: t) else { return }
             selector.adopt(selection.selected?.id)
@@ -141,6 +146,10 @@ final class NavigationController {
         if done != nil {
             recentIDs.insert(target.id)
             if recentIDs.count > 20 { recentIDs.removeFirst() }
+            let rank = lastGaze.flatMap { g in
+                SnapScorer.rank(gaze: g, sigma: gazeSigma, elements: selection.elements).firstIndex { $0.element.id == target.id }
+            }
+            onConfirmed?(target.frame, rank, ProcessInfo.processInfo.systemUptime)
         }
         if done == nil { NSSound.beep() }
         // Typing into a field needs the keys Gazelle would otherwise swallow.
